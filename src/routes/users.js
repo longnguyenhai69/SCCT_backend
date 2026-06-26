@@ -1,80 +1,54 @@
 const router = require('express').Router()
-const pool   = require('../db')
 const bcrypt = require('bcryptjs')
+const db     = require('../firestore')
 const { authenticate, requireRole } = require('../middleware/auth')
 
 const adminOnly = [authenticate, requireRole('admin')]
+const TECH_ROLES = ['tech', 'specialist', 'deputy_manager']
 
-// GET /api/users
 router.get('/', authenticate, async (req, res) => {
   try {
-    const { rows } = await pool.query(
-      'SELECT id, name, email, role, created_at FROM users ORDER BY id'
-    )
-    res.json(rows)
+    const users = await db.getAll('scct_users')
+    res.json(users.map(u => { const { password_hash, ...s } = u; return s }).sort((a,b) => a.name?.localeCompare(b.name)))
   } catch (err) { res.status(500).json({ error: err.message }) }
 })
 
-// GET /api/users/tech  — danh sách nhân viên kỹ thuật
 router.get('/tech', authenticate, async (req, res) => {
   try {
-    const { rows } = await pool.query(
-      `SELECT id, name, email, role FROM users
-       WHERE role IN ('tech','specialist','deputy_manager') ORDER BY name`
-    )
-    res.json(rows)
+    const users = await db.getAll('scct_users')
+    res.json(users.filter(u => TECH_ROLES.includes(u.role)).map(u => { const { password_hash, ...s } = u; return s }).sort((a,b) => a.name?.localeCompare(b.name)))
   } catch (err) { res.status(500).json({ error: err.message }) }
 })
 
-// POST /api/users
 router.post('/', ...adminOnly, async (req, res) => {
   const { name, email, role, password } = req.body
   if (!name || !email) return res.status(400).json({ error: 'Thiếu tên hoặc email' })
   try {
+    const existing = await db.where('scct_users', 'email', email.toLowerCase().trim())
+    if (existing.length) return res.status(400).json({ error: 'Email đã tồn tại' })
     const hash = await bcrypt.hash(password || 'scct@2026', 10)
-    const { rows } = await pool.query(
-      'INSERT INTO users (name, email, password_hash, role) VALUES ($1,$2,$3,$4) RETURNING id,name,email,role',
-      [name, email.toLowerCase().trim(), hash, role || 'tech']
-    )
-    res.status(201).json(rows[0])
-  } catch (err) {
-    if (err.code === '23505') return res.status(400).json({ error: 'Email đã tồn tại' })
-    res.status(500).json({ error: err.message })
-  }
+    const user = await db.add('scct_users', { name, email: email.toLowerCase().trim(), password_hash: hash, role: role || 'tech', created_at: new Date().toISOString() })
+    const { password_hash, ...safeUser } = user
+    res.status(201).json(safeUser)
+  } catch (err) { res.status(500).json({ error: err.message }) }
 })
 
-// PUT /api/users/:id
 router.put('/:id', ...adminOnly, async (req, res) => {
   const { name, email, role, password } = req.body
   try {
-    if (password) {
-      const hash = await bcrypt.hash(password, 10)
-      await pool.query(
-        'UPDATE users SET name=$1, email=$2, role=$3, password_hash=$4 WHERE id=$5',
-        [name, email.toLowerCase().trim(), role, hash, req.params.id]
-      )
-    } else {
-      await pool.query(
-        'UPDATE users SET name=$1, email=$2, role=$3 WHERE id=$4',
-        [name, email.toLowerCase().trim(), role, req.params.id]
-      )
-    }
-    const { rows } = await pool.query(
-      'SELECT id,name,email,role FROM users WHERE id=$1', [req.params.id]
-    )
-    res.json(rows[0])
-  } catch (err) {
-    if (err.code === '23505') return res.status(400).json({ error: 'Email đã tồn tại' })
-    res.status(500).json({ error: err.message })
-  }
+    const updates = { name, email: email.toLowerCase().trim(), role }
+    if (password) updates.password_hash = await bcrypt.hash(password, 10)
+    await db.update('scct_users', req.params.id, updates)
+    const user = await db.get('scct_users', req.params.id)
+    const { password_hash, ...safeUser } = user
+    res.json(safeUser)
+  } catch (err) { res.status(500).json({ error: err.message }) }
 })
 
-// DELETE /api/users/:id
 router.delete('/:id', ...adminOnly, async (req, res) => {
-  if (String(req.params.id) === String(req.user.id))
-    return res.status(400).json({ error: 'Không thể xóa chính mình' })
+  if (req.params.id === req.user.id) return res.status(400).json({ error: 'Không thể xóa chính mình' })
   try {
-    await pool.query('DELETE FROM users WHERE id=$1', [req.params.id])
+    await db.delete('scct_users', req.params.id)
     res.json({ message: 'Đã xóa' })
   } catch (err) { res.status(500).json({ error: err.message }) }
 })

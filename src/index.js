@@ -14,6 +14,7 @@ app.use('/api/tickets', require('./routes/tickets'))
 app.use('/api/reports', require('./routes/reports'))
 
 app.get('/api/health', (_, res) => res.json({ status: 'ok' }))
+app.use('/api/seed',    require('./routes/seed'))
 
 const PORT = process.env.PORT || 5000
 app.listen(PORT, () => console.log(`✅ SCCT Backend chạy tại http://localhost:${PORT}`))
