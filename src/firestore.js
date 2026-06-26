@@ -1,8 +1,8 @@
 const axios = require('axios')
 require('dotenv').config()
 
-const PROJECT = process.env.FIREBASE_PROJECT_ID || 'test-c9fbc'
-const KEY     = process.env.FIREBASE_API_KEY    || 'AIzaSyDihqGUewNx24vpFwOBwhnsW9qZfAJgk1I'
+const PROJECT = process.env.FIREBASE_PROJECT_ID || 'scct-cb346'
+const KEY     = process.env.FIREBASE_API_KEY    || 'AIzaSyDOSlLpduy4AFCb5uFw_9KsWrpxk7869KY'
 const BASE    = `https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/(default)/documents`
 const QUERY   = `https://firestore.googleapis.com/v1/projects/${PROJECT}/databases/(default)/documents:runQuery`
 
