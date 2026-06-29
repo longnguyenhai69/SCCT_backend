@@ -46,6 +46,37 @@ router.post('/', ...mgr, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }) }
 })
 
+// Nhập hàng loạt. Frontend đã map tên công trường/người → site_id/assigned_to và
+// validate, nên ở đây chỉ guard tối thiểu (name bắt buộc) rồi ghi theo lô.
+router.post('/bulk', ...mgr, async (req, res) => {
+  const { devices } = req.body
+  if (!Array.isArray(devices) || devices.length === 0)
+    return res.status(400).json({ error: 'Danh sách thiết bị trống' })
+  if (devices.length > 500)
+    return res.status(400).json({ error: 'Tối đa 500 thiết bị mỗi lần nhập' })
+  const bad = devices.findIndex(d => !d || !d.name)
+  if (bad >= 0)
+    return res.status(400).json({ error: `Dòng ${bad + 1}: thiếu tên thiết bị` })
+
+  try {
+    const now = new Date().toISOString()
+    const created = []
+    const CHUNK = 20  // giới hạn số ghi song song để không quá tải Firestore REST
+    for (let i = 0; i < devices.length; i += CHUNK) {
+      const part = await Promise.all(devices.slice(i, i + CHUNK).map(d =>
+        db.add('scct_devices', {
+          name: d.name, type: d.type || '', status: d.status || 'normal',
+          site_id: d.site_id || null, assigned_to: d.assigned_to || null,
+          reg_no: d.reg_no || null, inspect_expiry: d.inspect_expiry || null,
+          description: d.description || '', created_at: now,
+        })
+      ))
+      created.push(...part)
+    }
+    res.status(201).json({ created: created.length })
+  } catch (err) { res.status(500).json({ error: err.message }) }
+})
+
 router.put('/:id', ...mgr, async (req, res) => {
   const { name, type, status, site_id, assigned_to, reg_no, inspect_expiry, description } = req.body
   try {
