@@ -49,8 +49,16 @@ function docToObj(doc) {
 const db = {
   async getAll(col) {
     try {
-      const { data } = await axios.get(`${BASE}/${col}?key=${KEY}`)
-      return (data.documents || []).map(docToObj)
+      const docs = []
+      let pageToken = ''
+      do {
+        const url = `${BASE}/${col}?key=${KEY}&pageSize=300`
+          + (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '')
+        const { data } = await axios.get(url)
+        if (data.documents) docs.push(...data.documents.map(docToObj))
+        pageToken = data.nextPageToken
+      } while (pageToken)
+      return docs
     } catch { return [] }
   },
 
